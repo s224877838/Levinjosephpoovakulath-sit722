@@ -1,89 +1,86 @@
-name: CI/CD Pipeline - Build, Test, Push & Deploy
+name: CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
+      - development
   pull_request:
     branches:
       - main
-  workflow_dispatch:
-
-env:
-  ACR_LOGIN_SERVER: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
+      - development
 
 jobs:
-  build-test-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: orders
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U postgres -d orders"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
+    env:
+      ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
+      # --- Python setup ---
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: '3.10'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Wait for Postgres
+      # --- Install backend dependencies ---
+      - name: Install Python dependencies
         run: |
-          until pg_isready -h localhost -U postgres -d orders; do
-            echo "Waiting for postgres...";
-            sleep 2;
-          done
+          pip install --upgrade pip
+          pip install -r backend/product_service/requirements.txt
+          pip install -r backend/order_service/requirements.txt
+          pip install pytest
 
-      - name: Run Backend Tests
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/orders
+      # --- Run backend tests ---
+      - name: Run backend tests
         run: |
-          pytest backend/product_service/tests --disable-warnings -q
-          pytest backend/order_service/tests --disable-warnings -q
+          pytest backend/product_service/tests
+          pytest backend/order_service/tests
 
-      - name: Azure Login
-        uses: azure/login@v1
+      # --- Node setup (optional frontend) ---
+      - name: Set up Node
+        uses: actions/setup-node@v3
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          node-version: '18'
 
-      - name: Docker login to ACR
-        uses: docker/login-action@v2
+      - name: Install frontend dependencies
+        run: |
+          if [ -f frontend/package.json ]; then
+            cd frontend
+            npm install
+          fi
+
+      # --- Docker login to ACR ---
+      - name: Login to Azure Container Registry
+        uses: azure/docker-login@v1
         with:
-          registry: ${{ env.ACR_LOGIN_SERVER }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          login-server: ${{ env.ACR_LOGIN_SERVER }}
+          username: ${{ env.ACR_USERNAME }}
+          password: ${{ env.ACR_PASSWORD }}
 
-      - name: Build and Push Backend Product Service Image
+      # --- Build Docker images ---
+      - name: Build Docker images
         run: |
-          docker build -t ${{ env.ACR_LOGIN_SERVER }}/product_service:${{ github.sha }} ./backend/product_service
-          docker push ${{ env.ACR_LOGIN_SERVER }}/product_service:${{ github.sha }}
+          docker build -t ${{ env.ACR_LOGIN_SERVER }}/product_service:latest backend/product_service
+          docker build -t ${{ env.ACR_LOGIN_SERVER }}/order_service:latest backend/order_service
 
-      - name: Build and Push Backend Order Service Image
+      # --- Push Docker images to ACR ---
+      - name: Push Docker images
         run: |
-          docker build -t ${{ env.ACR_LOGIN_SERVER }}/order_service:${{ github.sha }} ./backend/order_service
-          docker push ${{ env.ACR_LOGIN_SERVER }}/order_service:${{ github.sha }}
+          docker push ${{ env.ACR_LOGIN_SERVER }}/product_service:latest
+          docker push ${{ env.ACR_LOGIN_SERVER }}/order_service:latest
 
-      - name: Build and Push Frontend Image
+      # --- Optional: deploy to Azure ---
+      - name: Deploy to Azure (optional)
         run: |
-          docker build -t ${{ env.ACR_LOGIN_SERVER }}/frontend:${{ github.sha }} ./frontend
-          docker push ${{ env.ACR_LOGIN_SERVER }}/frontend:${{ github.sha }}
+          echo "Add your kubectl / azure deployment commands here"
 
-      - name: Logout from Azure
-        if: always()
-        run: az logout
+      # --- Logout from Azure ---
+      - name: Azure logout
+        run: |
+          az logout || echo "No active session to logout"
