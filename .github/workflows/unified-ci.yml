@@ -5,7 +5,7 @@ on:
   push:
     branches:
       - development
-      - main
+
     paths:
       - 'backend/**'
       - 'frontend/**'
@@ -14,7 +14,7 @@ on:
   pull_request:
     branches:
       - main
-      - development
+
     paths:
       - 'backend/**'
       - 'frontend/**'
