@@ -20,7 +20,7 @@ env:
   ACR_LOGIN_SERVER: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
 
 jobs:
-  # ---------------- BACKEND DEPLOYMENT ----------------
+ 
   deploy_backend:
     runs-on: ubuntu-latest
     environment: Production
