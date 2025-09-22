@@ -4,7 +4,17 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - development
       - main
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/ci.yml'
+
+  pull_request:
+    branches:
+      - main
+      - development
     paths:
       - 'backend/**'
       - 'frontend/**'
@@ -94,13 +104,15 @@ jobs:
 
       - name: Build & Push Product Service
         run: |
-          docker build -t ${{ env.ACR_LOGIN_SERVER }}/product_service:${{ env.IMAGE_TAG }} ./backend/product_service
-          docker push ${{ env.ACR_LOGIN_SERVER }}/product_service:${{ env.IMAGE_TAG }}
+          TAG=${{ github.ref_name == 'main' && 'latest' || format('dev-{0}', github.sha) }}
+          docker build -t ${{ env.ACR_LOGIN_SERVER }}/product_service:$TAG ./backend/product_service
+          docker push ${{ env.ACR_LOGIN_SERVER }}/product_service:$TAG
 
       - name: Build & Push Order Service
         run: |
-          docker build -t ${{ env.ACR_LOGIN_SERVER }}/order_service:${{ env.IMAGE_TAG }} ./backend/order_service
-          docker push ${{ env.ACR_LOGIN_SERVER }}/order_service:${{ env.IMAGE_TAG }}
+          TAG=${{ github.ref_name == 'main' && 'latest' || format('dev-{0}', github.sha) }}
+          docker build -t ${{ env.ACR_LOGIN_SERVER }}/order_service:$TAG ./backend/order_service
+          docker push ${{ env.ACR_LOGIN_SERVER }}/order_service:$TAG
 
       - name: Logout Azure
         if: always()
@@ -124,8 +136,9 @@ jobs:
 
       - name: Build & Push Frontend
         run: |
-          docker build -t ${{ env.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }} ./frontend
-          docker push ${{ env.ACR_LOGIN_SERVER }}/frontend:${{ env.IMAGE_TAG }}
+          TAG=${{ github.ref_name == 'main' && 'latest' || format('dev-{0}', github.sha) }}
+          docker build -t ${{ env.ACR_LOGIN_SERVER }}/frontend:$TAG ./frontend
+          docker push ${{ env.ACR_LOGIN_SERVER }}/frontend:$TAG
 
       - name: Logout Azure
         if: always()
