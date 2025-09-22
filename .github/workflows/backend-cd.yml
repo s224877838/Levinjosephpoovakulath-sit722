@@ -6,7 +6,7 @@ on:
       aks_cluster_name:
         description: 'Name of the AKS Cluster'
         required: true
-        default: 'MYAKSCLUSTER'
+        default: 'myAKSCluster'
       aks_resource_group:
         description: 'Resource Group of the AKS Cluster'
         required: true
