@@ -152,7 +152,7 @@ on:
       aks_cluster_name:
         description: 'Name of the AKS Cluster'
         required: true
-        default: 'myAKSCluster'
+        default: 'MyAKSCluster'
       aks_resource_group:
         description: 'Resource Group of the AKS Cluster'
         required: true
