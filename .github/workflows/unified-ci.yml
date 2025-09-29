@@ -33,17 +33,17 @@ jobs:
 
       - name: Build Docker images and push to ACR
         run: |
-          docker buildx build --file week08/backend/product_service/Dockerfile \
+          docker buildx build --file week8/backend/product_service/Dockerfile \
             --tag ${{ secrets.ACR_NAME }}.azurecr.io/product_service:latest \
-            --push week08/backend/product_service
+            --push week8/backend/product_service
 
-          docker buildx build --file week08/backend/order_service/Dockerfile \
+          docker buildx build --file week8/backend/order_service/Dockerfile \
             --tag ${{ secrets.ACR_NAME }}.azurecr.io/order_service:latest \
-            --push week08/backend/order_service
+            --push week8/backend/order_service
 
-          docker buildx build --file week08/frontend/Dockerfile \
+          docker buildx build --file week8/frontend/Dockerfile \
             --tag ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest \
-            --push week08/frontend
+            --push week8/frontend
 
       - name: Run tests for Product Service
         run: |
@@ -81,8 +81,8 @@ jobs:
 
       - name: Wait for Deployments
         run: |
-          kubectl rollout status deployment/product-service-w08e1
-          kubectl rollout status deployment/order-service-w08e1
+          kubectl rollout status deployment/product-service-w8e1
+          kubectl rollout status deployment/order-service-w8e1
           kubectl rollout status deployment/frontend
 
       - name: Run Acceptance Tests
