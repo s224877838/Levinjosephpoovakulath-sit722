@@ -20,42 +20,42 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
 
-      - name: Log in to Azure and ACR
-        uses: azure/cli@v1
-        with:
-          inlineScript: |
-            echo '${{ secrets.AZURE_CREDENTIALS }}' > azure_credentials.json
-            az login --service-principal \
-              -u $(jq -r .clientId azure_credentials.json) \
-              -p $(jq -r .clientSecret azure_credentials.json) \
-              --tenant $(jq -r .tenantId azure_credentials.json)
-            az acr login --name ${{ secrets.ACR_NAME }}
+      - name: Azure Login and ACR Login
+        run: |
+          echo '${{ secrets.AZURE_CREDENTIALS }}' > azure_credentials.json
+
+          az login --service-principal \
+            -u $(jq -r .clientId azure_credentials.json) \
+            -p $(jq -r .clientSecret azure_credentials.json) \
+            --tenant $(jq -r .tenantId azure_credentials.json)
+
+          az acr login --name ${{ secrets.ACR_NAME }}
 
       - name: Build Docker images and push to ACR
         run: |
           docker buildx build --file week08/backend/product_service/Dockerfile \
-            --tag ${{ secrets.ACR_NAME }}.azurecr.io/product_service:latest --push week08/backend/product_service
+            --tag ${{ secrets.ACR_NAME }}.azurecr.io/product_service:latest \
+            --push week08/backend/product_service
 
           docker buildx build --file week08/backend/order_service/Dockerfile \
-            --tag ${{ secrets.ACR_NAME }}.azurecr.io/order_service:latest --push week08/backend/order_service
+            --tag ${{ secrets.ACR_NAME }}.azurecr.io/order_service:latest \
+            --push week08/backend/order_service
 
           docker buildx build --file week08/frontend/Dockerfile \
-            --tag ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest --push week08/frontend
+            --tag ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest \
+            --push week08/frontend
 
       - name: Run tests for Product Service
         run: |
-          docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/product_service:latest \
-            pytest --maxfail=5 --disable-warnings -q
+          docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/product_service:latest pytest --maxfail=5 --disable-warnings -q
 
       - name: Run tests for Order Service
         run: |
-          docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/order_service:latest \
-            pytest --maxfail=5 --disable-warnings -q
+          docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/order_service:latest pytest --maxfail=5 --disable-warnings -q
 
       - name: Run tests for Frontend Service
         run: |
-          docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest \
-            pytest --maxfail=5 --disable-warnings -q
+          docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest pytest --maxfail=5 --disable-warnings -q
 
   staging-deployment:
     needs: ci-pipeline
@@ -63,34 +63,33 @@ jobs:
     if: success()
 
     steps:
-      - name: Login to Azure and AKS
-        uses: azure/cli@v1
-        with:
-          inlineScript: |
-            echo '${{ secrets.AZURE_CREDENTIALS }}' > azure_credentials.json
-            az login --service-principal \
-              -u $(jq -r .clientId azure_credentials.json) \
-              -p $(jq -r .clientSecret azure_credentials.json) \
-              --tenant $(jq -r .tenantId azure_credentials.json)
-            az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
+      - name: Azure Login and AKS Credentials
+        run: |
+          echo '${{ secrets.AZURE_CREDENTIALS }}' > azure_credentials.json
 
-      - name: Deploy to Staging Environment
+          az login --service-principal \
+            -u $(jq -r .clientId azure_credentials.json) \
+            -p $(jq -r .clientSecret azure_credentials.json) \
+            --tenant $(jq -r .tenantId azure_credentials.json)
+
+          az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ secrets.AKS_CLUSTER_NAME }}
+
+      - name: Deploy to Staging
         run: |
           kubectl apply -f k8s/
 
-      - name: Wait for Deployment to Complete
+      - name: Wait for Deployments
         run: |
           kubectl rollout status deployment/product-service-w08e1
           kubectl rollout status deployment/order-service-w08e1
           kubectl rollout status deployment/frontend
 
       - name: Run Acceptance Tests
-        run: |
-          echo "Running staging acceptance tests..."
+        run: echo "Running staging tests..."
 
       - name: Clean up Staging
-        run: |
-          kubectl delete -f k8s/
+        run: kubectl delete -f k8s/
 
   production-deployment:
     needs: staging-deployment
@@ -98,17 +97,17 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Login to Azure and AKS for Production
-        uses: azure/cli@v1
-        with:
-          inlineScript: |
-            echo '${{ secrets.AZURE_CREDENTIALS }}' > azure_credentials.json
-            az login --service-principal \
-              -u $(jq -r .clientId azure_credentials.json) \
-              -p $(jq -r .clientSecret azure_credentials.json) \
-              --tenant $(jq -r .tenantId azure_credentials.json)
-            az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
-
-      - name: Deploy to Production Environment
+      - name: Azure Login and AKS Credentials
         run: |
-          kubectl apply -f k8s/.
+          echo '${{ secrets.AZURE_CREDENTIALS }}' > azure_credentials.json
+
+          az login --service-principal \
+            -u $(jq -r .clientId azure_credentials.json) \
+            -p $(jq -r .clientSecret azure_credentials.json) \
+            --tenant $(jq -r .tenantId azure_credentials.json)
+
+          az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --name ${{ secrets.AKS_CLUSTER_NAME }}
+
+      - name: Deploy to Production
+        run: kubectl apply -f k8s/
