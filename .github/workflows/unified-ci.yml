@@ -1,5 +1,6 @@
 name: CI/CD Pipeline for SIT722
 
+# Trigger pipeline on push to testing branch, PR to main, or manual trigger
 on:
   push:
     branches:
@@ -7,9 +8,10 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch:  # manual trigger
+  workflow_dispatch:   # Manual trigger
 
 jobs:
+  # Stage 1: CI pipeline - Build, test, and push images
   ci-pipeline:
     runs-on: ubuntu-latest
 
@@ -23,16 +25,22 @@ jobs:
       - name: Set up Azure CLI
         uses: azure/setup-azure-cli@v1
 
-      - name: Log in to Azure and ACR
+      - name: Azure Login
         run: |
-          echo ${{ secrets.AZURE_CREDENTIALS }} | az ad sp create-for-rbac --role="Contributor" --scopes="/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ secrets.AZURE_RESOURCE_GROUP }}" > azure_credentials.json
+          echo "${{ secrets.AZURE_CREDENTIALS }}" > azure_credentials.json
           az login --service-principal -u $(jq -r .appId azure_credentials.json) -p $(jq -r .password azure_credentials.json) --tenant $(jq -r .tenant azure_credentials.json)
           az acr login --name ${{ secrets.ACR_NAME }}
 
-      - name: Build Docker images and push to ACR
+      - name: Build and push product_service image
         run: |
           docker buildx build --file backend/product_service/Dockerfile --tag ${{ secrets.ACR_NAME }}.azurecr.io/product_service:latest --push backend/product_service
+
+      - name: Build and push order_service image
+        run: |
           docker buildx build --file backend/order_service/Dockerfile --tag ${{ secrets.ACR_NAME }}.azurecr.io/order_service:latest --push backend/order_service
+
+      - name: Build and push frontend image
+        run: |
           docker buildx build --file frontend/Dockerfile --tag ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest --push frontend
 
       - name: Run tests for Product Service
@@ -47,50 +55,70 @@ jobs:
         run: |
           docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest pytest --maxfail=5 --disable-warnings -q
 
-      - name: Trigger Staging Deployment
-        if: success()
-        run: echo "Tests passed! Triggering staging deployment."
+      - name: Logout Azure
+        if: always()
+        run: az logout
 
+  # Stage 2: Deploy to Staging environment
   staging-deployment:
     needs: ci-pipeline
     runs-on: ubuntu-latest
     if: success()
 
     steps:
-      - name: Log in to Azure and AKS
+      - name: Checkout repo
+        uses: actions/checkout@v2
+
+      - name: Set up Azure CLI
         uses: azure/setup-azure-cli@v1
+
+      - name: Azure Login and AKS Credentials Setup
         run: |
-          echo ${{ secrets.AZURE_CREDENTIALS }} | az ad sp create-for-rbac --role="Contributor" --scopes="/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ secrets.AZURE_RESOURCE_GROUP }}" > azure_credentials.json
+          echo "${{ secrets.AZURE_CREDENTIALS }}" > azure_credentials.json
           az login --service-principal -u $(jq -r .appId azure_credentials.json) -p $(jq -r .password azure_credentials.json) --tenant $(jq -r .tenant azure_credentials.json)
           az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
 
       - name: Deploy to Staging Environment
         run: kubectl apply -f k8s/
 
-      - name: Wait for Deployment
+      - name: Wait for Deployments to Complete
         run: |
           kubectl rollout status deployment/product-service-w08e1
           kubectl rollout status deployment/order-service-w08e1
           kubectl rollout status deployment/frontend
 
-      - name: Run acceptance tests on Staging Environment
-        run: echo "Running acceptance tests on staging..."
+      - name: Run acceptance tests on staging
+        run: echo "Add your acceptance tests here"
 
-      - name: Clean up Staging Environment
+      - name: Cleanup staging environment
         run: kubectl delete -f k8s/
 
+      - name: Logout Azure
+        if: always()
+        run: az logout
+
+  # Stage 3: Production Deployment on main branch merges
   production-deployment:
     needs: staging-deployment
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Log in to Azure and AKS for Production
+      - name: Checkout repo
+        uses: actions/checkout@v2
+
+      - name: Set up Azure CLI
         uses: azure/setup-azure-cli@v1
+
+      - name: Azure Login and AKS Credentials Setup for Production
         run: |
-          echo ${{ secrets.AZURE_CREDENTIALS }} | az ad sp create-for-rbac --role="Contributor" --scopes="/subscriptions/${{ secrets.AZURE_SUBSCRIPTION_ID }}/resourceGroups/${{ secrets.AZURE_RESOURCE_GROUP }}" > azure_credentials.json
+          echo "${{ secrets.AZURE_CREDENTIALS }}" > azure_credentials.json
           az login --service-principal -u $(jq -r .appId azure_credentials.json) -p $(jq -r .password azure_credentials.json) --tenant $(jq -r .tenant azure_credentials.json)
           az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
 
       - name: Deploy to Production Environment
         run: kubectl apply -f k8s/
+
+      - name: Logout Azure
+        if: always()
+        run: az logout
