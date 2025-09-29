@@ -7,7 +7,8 @@ on:
       - testing  # Trigger pipeline on pushing to `testing` branch
   pull_request:
     branches:
-      - main  # Trigger pipeline on pull request to `main` branch
+      - main 
+  workflow_dispatch:    # Trigger pipeline on pull request to `main` branch
 
 jobs:
   # Stage 1: CI pipeline for testing, building, and pushing Docker images
