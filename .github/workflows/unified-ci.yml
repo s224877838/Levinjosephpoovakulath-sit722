@@ -1,6 +1,5 @@
 name: CI/CD Pipeline for SIT722
 
-# Trigger pipeline on push to testing branch, PR to main, or manual trigger
 on:
   push:
     branches:
@@ -8,10 +7,9 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch:   # Manual trigger
+  workflow_dispatch:
 
 jobs:
-  # Stage 1: CI pipeline - Build, test, and push images
   ci-pipeline:
     runs-on: ubuntu-latest
 
@@ -22,14 +20,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
 
-      - name: Set up Azure CLI
-        uses: azure/setup-azure-cli@v1
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Azure Login
-        run: |
-          echo "${{ secrets.AZURE_CREDENTIALS }}" > azure_credentials.json
-          az login --service-principal -u $(jq -r .appId azure_credentials.json) -p $(jq -r .password azure_credentials.json) --tenant $(jq -r .tenant azure_credentials.json)
-          az acr login --name ${{ secrets.ACR_NAME }}
+      - name: Login to Azure Container Registry
+        run: az acr login --name ${{ secrets.ACR_NAME }}
 
       - name: Build and push product_service image
         run: |
@@ -59,7 +56,6 @@ jobs:
         if: always()
         run: az logout
 
-  # Stage 2: Deploy to Staging environment
   staging-deployment:
     needs: ci-pipeline
     runs-on: ubuntu-latest
@@ -69,13 +65,13 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v2
 
-      - name: Set up Azure CLI
-        uses: azure/setup-azure-cli@v1
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Azure Login and AKS Credentials Setup
+      - name: Set AKS context
         run: |
-          echo "${{ secrets.AZURE_CREDENTIALS }}" > azure_credentials.json
-          az login --service-principal -u $(jq -r .appId azure_credentials.json) -p $(jq -r .password azure_credentials.json) --tenant $(jq -r .tenant azure_credentials.json)
           az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
 
       - name: Deploy to Staging Environment
@@ -97,7 +93,6 @@ jobs:
         if: always()
         run: az logout
 
-  # Stage 3: Production Deployment on main branch merges
   production-deployment:
     needs: staging-deployment
     runs-on: ubuntu-latest
@@ -107,13 +102,13 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v2
 
-      - name: Set up Azure CLI
-        uses: azure/setup-azure-cli@v1
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Azure Login and AKS Credentials Setup for Production
+      - name: Set AKS context
         run: |
-          echo "${{ secrets.AZURE_CREDENTIALS }}" > azure_credentials.json
-          az login --service-principal -u $(jq -r .appId azure_credentials.json) -p $(jq -r .password azure_credentials.json) --tenant $(jq -r .tenant azure_credentials.json)
           az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
 
       - name: Deploy to Production Environment
