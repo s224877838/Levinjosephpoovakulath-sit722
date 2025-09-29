@@ -3,14 +3,13 @@ name: CI/CD Pipeline for SIT722
 on:
   push:
     branches:
-      - testing  # Trigger pipeline on pushing to `testing` branch
+      - testing
   pull_request:
     branches:
-      - main     # Trigger pipeline on pull requests to `main` branch
-  workflow_dispatch:   # Manual trigger
+      - main
+  workflow_dispatch:
 
 jobs:
-  # Stage 1: CI pipeline for testing, building, and pushing Docker images
   ci-pipeline:
     runs-on: ubuntu-latest
 
@@ -21,57 +20,59 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
       - name: Log in to Azure and ACR
-        run: |
-          echo '${{ secrets.AZURE_CREDENTIALS }}' > azure_credentials.json
-          az login --service-principal \
-            -u $(jq -r .clientId azure_credentials.json) \
-            -p $(jq -r .clientSecret azure_credentials.json) \
-            --tenant $(jq -r .tenantId azure_credentials.json)
-          az acr login --name ${{ secrets.ACR_NAME }}
+        uses: azure/cli@v1
+        with:
+          inlineScript: |
+            echo '${{ secrets.AZURE_CREDENTIALS }}' > azure_credentials.json
+            az login --service-principal \
+              -u $(jq -r .clientId azure_credentials.json) \
+              -p $(jq -r .clientSecret azure_credentials.json) \
+              --tenant $(jq -r .tenantId azure_credentials.json)
+            az acr login --name ${{ secrets.ACR_NAME }}
 
       - name: Build Docker images and push to ACR
         run: |
-          docker buildx build --file Dockerfile.product_service --tag ${{ secrets.ACR_NAME }}.azurecr.io/product_service:latest --push .
-          docker buildx build --file Dockerfile.order_service --tag ${{ secrets.ACR_NAME }}.azurecr.io/order_service:latest --push .
-          docker buildx build --file Dockerfile.frontend --tag ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest --push .
+          docker buildx build --file week08/backend/product_service/Dockerfile \
+            --tag ${{ secrets.ACR_NAME }}.azurecr.io/product_service:latest --push week08/backend/product_service
+
+          docker buildx build --file week08/backend/order_service/Dockerfile \
+            --tag ${{ secrets.ACR_NAME }}.azurecr.io/order_service:latest --push week08/backend/order_service
+
+          docker buildx build --file week08/frontend/Dockerfile \
+            --tag ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest --push week08/frontend
 
       - name: Run tests for Product Service
         run: |
-          docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/product_service:latest pytest --maxfail=5 --disable-warnings -q
+          docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/product_service:latest \
+            pytest --maxfail=5 --disable-warnings -q
 
       - name: Run tests for Order Service
         run: |
-          docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/order_service:latest pytest --maxfail=5 --disable-warnings -q
+          docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/order_service:latest \
+            pytest --maxfail=5 --disable-warnings -q
 
       - name: Run tests for Frontend Service
         run: |
-          docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest pytest --maxfail=5 --disable-warnings -q
+          docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest \
+            pytest --maxfail=5 --disable-warnings -q
 
-  # Stage 2: Staging Deployment
   staging-deployment:
     needs: ci-pipeline
     runs-on: ubuntu-latest
     if: success()
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v2
-
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Log in to Azure and AKS
-        run: |
-          echo '${{ secrets.AZURE_CREDENTIALS }}' > azure_credentials.json
-          az login --service-principal \
-            -u $(jq -r .clientId azure_credentials.json) \
-            -p $(jq -r .clientSecret azure_credentials.json) \
-            --tenant $(jq -r .tenantId azure_credentials.json)
-          az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
+      - name: Login to Azure and AKS
+        uses: azure/cli@v1
+        with:
+          inlineScript: |
+            echo '${{ secrets.AZURE_CREDENTIALS }}' > azure_credentials.json
+            az login --service-principal \
+              -u $(jq -r .clientId azure_credentials.json) \
+              -p $(jq -r .clientSecret azure_credentials.json) \
+              --tenant $(jq -r .tenantId azure_credentials.json)
+            az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
 
       - name: Deploy to Staging Environment
         run: |
@@ -83,34 +84,31 @@ jobs:
           kubectl rollout status deployment/order-service-w08e1
           kubectl rollout status deployment/frontend
 
-      - name: Run Acceptance Tests on Staging
-        run: echo "Running acceptance tests on staging..."
+      - name: Run Acceptance Tests
+        run: |
+          echo "Running staging acceptance tests..."
 
-      - name: Clean Up Staging Environment
-        run: kubectl delete -f k8s/
+      - name: Clean up Staging
+        run: |
+          kubectl delete -f k8s/
 
-  # Stage 3: Production Deployment
   production-deployment:
     needs: staging-deployment
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v2
-
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Log in to Azure and AKS
-        run: |
-          echo '${{ secrets.AZURE_CREDENTIALS }}' > azure_credentials.json
-          az login --service-principal \
-            -u $(jq -r .clientId azure_credentials.json) \
-            -p $(jq -r .clientSecret azure_credentials.json) \
-            --tenant $(jq -r .tenantId azure_credentials.json)
-          az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
+      - name: Login to Azure and AKS for Production
+        uses: azure/cli@v1
+        with:
+          inlineScript: |
+            echo '${{ secrets.AZURE_CREDENTIALS }}' > azure_credentials.json
+            az login --service-principal \
+              -u $(jq -r .clientId azure_credentials.json) \
+              -p $(jq -r .clientSecret azure_credentials.json) \
+              --tenant $(jq -r .tenantId azure_credentials.json)
+            az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
 
       - name: Deploy to Production Environment
         run: |
-          kubectl apply -f k8s/
+          kubectl apply -f k8s/.
