@@ -1,0 +1,13 @@
+# week08/frontend/Dockerfile.test
+
+FROM node:18
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+# Run tests (e.g., Jest or whatever you're using)
+CMD ["npm", "test"]
