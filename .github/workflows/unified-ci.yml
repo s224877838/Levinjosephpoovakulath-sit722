@@ -6,103 +6,119 @@ on:
       - testing
   pull_request:
     branches:
-      - main
+      - main 
   workflow_dispatch:
 
 jobs:
   stage1-build-test:
     name: Build and Test Docker Images
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/testing' || github.event_name == 'workflow_dispatch' }}
+    if: github.event_name == 'push' && github.ref == 'refs/heads/testing' || github.event_name == 'workflow_dispatch'
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+    - name: Checkout Code
+      uses: actions/checkout@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
 
-      - name: Log in to Azure Container Registry
-        uses: azure/docker-login@v1
-        with:
-          login-server: week8.azurecr.io
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+    - name: Install pytest
+      run: pip install --upgrade pip pytest
 
-      - name: Build Docker Images
-        run: |
-          docker build -t week8.azurecr.io/product_service:latest ./backend/product_service
-          docker build -t week8.azurecr.io/order_service:latest ./backend/order_service
-          docker build -t week8.azurecr.io/frontend:latest ./frontend
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
 
-      - name: Run Backend Tests
-        run: |
-          cd backend/product_service && pytest tests/
-          cd ../../backend/order_service && pytest tests/
+    - name: Log in to ACR
+      uses: azure/docker-login@v1
+      with:
+        login-server: week8.azurecr.io
+        username: ${{ secrets.ACR_USERNAME }}
+        password: ${{ secrets.ACR_PASSWORD }}
 
-      - name: Push Images to ACR
-        if: success()
-        run: |
-          docker push week8.azurecr.io/product_service:latest
-          docker push week8.azurecr.io/order_service:latest
-          docker push week8.azurecr.io/frontend:latest
+    - name: Build Docker images
+      run: |
+        docker build -t week8.azurecr.io/product_service:latest ./backend/product_service
+        docker build -t week8.azurecr.io/order_service:latest ./backend/order_service
+        docker build -t week8.azurecr.io/frontend:latest ./frontend
+
+    - name: Run Backend Tests
+      run: |
+        cd backend/product_service && pytest tests/
+        cd ../../backend/order_service && pytest tests/
+
+    - name: Push Images to ACR
+      if: success()
+      run: |
+        docker push week8.azurecr.io/product_service:latest
+        docker push week8.azurecr.io/order_service:latest
+        docker push week8.azurecr.io/frontend:latest
 
   stage2-staging:
     name: Deploy to Staging Environment
     runs-on: ubuntu-latest
     needs: stage1-build-test
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+    - name: Checkout Code
+      uses: actions/checkout@v3
 
-      - name: Setup kubeconfig for Staging
-        run: |
-          echo "${{ secrets.STAGING_KUBECONFIG }}" > $HOME/.kube/config
-          chmod 600 $HOME/.kube/config
+    - name: Prepare kubeconfig
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.STAGING_KUBECONFIG }}" > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
 
-      - name: Verify kubectl context
-        run: kubectl config get-contexts
+    - name: Set kubectl context
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.30.0'
 
-      - name: Create staging namespace
-        run: kubectl create ns staging || echo "Namespace exists"
+    - name: Create staging namespace
+      run: kubectl create ns staging || echo "Namespace exists"
 
-      - name: Deploy to staging
-        run: |
-          kubectl apply -n staging -f k8s/configmaps.yaml
-          kubectl apply -n staging -f k8s/product-db.yaml
-          kubectl apply -n staging -f k8s/order-db.yaml
-          kubectl apply -n staging -f k8s/product-service.yaml
-          kubectl apply -n staging -f k8s/order-service.yaml
-          kubectl apply -n staging -f k8s/frontend.yaml
+    - name: Deploy to staging
+      run: |
+        kubectl apply -n staging -f k8s/configmaps.yaml
+        kubectl apply -n staging -f k8s/product-db.yaml
+        kubectl apply -n staging -f k8s/order-db.yaml
+        kubectl apply -n staging -f k8s/product-service.yaml
+        kubectl apply -n staging -f k8s/order-service.yaml
+        kubectl apply -n staging -f k8s/frontend.yaml
 
-      - name: Run trivial acceptance test
-        run: |
-          FRONTEND_IP=$(kubectl get svc frontend-w08e1 -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-          curl -f http://$FRONTEND_IP/ || exit 1
+    - name: Run trivial acceptance test
+      run: |
+        curl -f http://$(kubectl get svc frontend-w08e1 -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')/ || exit 1
 
-      - name: Destroy staging environment
-        run: kubectl delete ns staging
+    - name: Destroy staging environment
+      run: kubectl delete ns staging
 
   stage3-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/testing' || github.event_name == 'workflow_dispatch' }}
+    if: github.event_name == 'push' && github.ref == 'refs/heads/testing' || github.event_name == 'workflow_dispatch'
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+    - name: Checkout Code
+      uses: actions/checkout@v3
 
-      - name: Setup kubeconfig for Production
-        run: |
-          echo "${{ secrets.PROD_KUBECONFIG }}" > $HOME/.kube/config
-          chmod 600 $HOME/.kube/config
+    - name: Prepare kubeconfig
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.PROD_KUBECONFIG }}" > $HOME/.kube/config
+        chmod 600 $HOME/.kube/config
 
-      - name: Verify kubectl context
-        run: kubectl config get-contexts
+    - name: Set kubectl context
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.30.0'
 
-      - name: Deploy to production
-        run: |
-          kubectl apply -f k8s/configmaps.yaml
-          kubectl apply -f k8s/product-db.yaml
-          kubectl apply -f k8s/order-db.yaml
-          kubectl apply -f k8s/product-service.yaml
-          kubectl apply -f k8s/order-service.yaml
-          kubectl apply -f k8s/frontend.yaml
+    - name: Deploy to production
+      run: |
+        kubectl apply -f k8s/configmaps.yaml
+        kubectl apply -f k8s/product-db.yaml
+        kubectl apply -f k8s/order-db.yaml
+        kubectl apply -f k8s/product-service.yaml
+        kubectl apply -f k8s/order-service.yaml
+        kubectl apply -f k8s/frontend.yaml
