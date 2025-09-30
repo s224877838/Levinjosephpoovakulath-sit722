@@ -15,9 +15,31 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/testing' || github.event_name == 'workflow_dispatch'
 
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: products
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
     - name: Checkout Code
       uses: actions/checkout@v3
+
+    - name: Wait for PostgreSQL
+      run: |
+        until pg_isready -h localhost -p 5432; do
+          echo "Waiting for PostgreSQL..."
+          sleep 2
+        done
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -29,7 +51,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r backend/product_service/requirements.txt
         pip install -r backend/order_service/requirements.txt
-        pip install pytest
+        pip install pytest psycopg2-binary
 
     - name: Run Backend Tests
       run: |
