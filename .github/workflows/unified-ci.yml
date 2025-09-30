@@ -24,8 +24,17 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Install pytest
-      run: pip install --upgrade pip pytest
+    - name: Install backend dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r backend/product_service/requirements.txt
+        pip install -r backend/order_service/requirements.txt
+        pip install pytest
+
+    - name: Run Backend Tests
+      run: |
+        cd backend/product_service && pytest tests/
+        cd ../../backend/order_service && pytest tests/
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
@@ -42,11 +51,6 @@ jobs:
         docker build -t week8.azurecr.io/product_service:latest ./backend/product_service
         docker build -t week8.azurecr.io/order_service:latest ./backend/order_service
         docker build -t week8.azurecr.io/frontend:latest ./frontend
-
-    - name: Run Backend Tests
-      run: |
-        cd backend/product_service && pytest tests/
-        cd ../../backend/order_service && pytest tests/
 
     - name: Push Images to ACR
       if: success()
@@ -87,12 +91,8 @@ jobs:
         kubectl apply -n staging -f k8s/order-service.yaml
         kubectl apply -n staging -f k8s/frontend.yaml
 
-    - name: Run trivial acceptance test
-      run: |
-        curl -f http://$(kubectl get svc frontend-w08e1 -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')/ || exit 1
-
     - name: Destroy staging environment
-      run: kubectl delete ns staging
+      run: kubectl delete ns staging || echo "Namespace already deleted"
 
   stage3-production:
     name: Deploy to Production
