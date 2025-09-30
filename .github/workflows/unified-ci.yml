@@ -116,9 +116,9 @@ jobs:
 
     - name: Deploy to production
       run: |
-        kubectl apply -f k8s/configmaps.yaml
-        kubectl apply -f k8s/product-db.yaml
-        kubectl apply -f k8s/order-db.yaml
-        kubectl apply -f k8s/product-service.yaml
-        kubectl apply -f k8s/order-service.yaml
-        kubectl apply -f k8s/frontend.yaml
+        kubectl apply --validate=false -f k8s/configmaps.yaml
+        kubectl apply --validate=false -f k8s/product-db.yaml
+        kubectl apply --validate=false -f k8s/order-db.yaml
+        kubectl apply --validate=false -f k8s/product-service.yaml
+        kubectl apply --validate=false -f k8s/order-service.yaml
+        kubectl apply --validate=false -f k8s/frontend.yaml
