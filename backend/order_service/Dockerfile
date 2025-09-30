@@ -6,7 +6,8 @@ WORKDIR /code
 COPY requirements.txt .
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir pytest
 
 # Copy application code
 COPY app /code/app
