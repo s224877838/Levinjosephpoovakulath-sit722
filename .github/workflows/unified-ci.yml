@@ -1,4 +1,4 @@
-name: CI/CD Pipeline for SIT722
+name: E-Commerce CI/CD Pipeline
 
 on:
   push:
@@ -7,122 +7,98 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch:
 
 jobs:
-  ci-pipeline:
+  stage1-build-test:
+    name: Build and Test Docker Images
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/testing'
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v2
+    - name: Checkout Code
+      uses: actions/checkout@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
 
-      - name: Login to Azure
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - name: Log in to ACR
+      uses: azure/docker-login@v1
+      with:
+        login-server: week8.azurecr.io
+        username: ${{ secrets.ACR_USERNAME }}
+        password: ${{ secrets.ACR_PASSWORD }}
 
-      - name: Login to Azure Container Registry
-        run: az acr login --name ${{ secrets.ACR_NAME }}
+    - name: Build Docker images
+      run: |
+        docker build -t week8.azurecr.io/product_service:latest ./backend/product_service
+        docker build -t week8.azurecr.io/order_service:latest ./backend/order_service
+        docker build -t week8.azurecr.io/frontend:latest ./frontend
 
-      # Build and push product_service image
-      - name: Build and push product_service image
-        run: |
-          docker buildx build --file backend/product_service/Dockerfile --tag ${{ secrets.ACR_NAME }}.azurecr.io/product_service:latest --push backend/product_service
+    - name: Run Backend Tests
+      run: |
+        cd backend/product_service && pytest tests/
+        cd ../../backend/order_service && pytest tests/
 
-      # Build and push order_service image
-      - name: Build and push order_service image
-        run: |
-          docker buildx build --file backend/order_service/Dockerfile --tag ${{ secrets.ACR_NAME }}.azurecr.io/order_service:latest --push backend/order_service
+    - name: Push Images to ACR
+      if: success()
+      run: |
+        docker push week8.azurecr.io/product_service:latest
+        docker push week8.azurecr.io/order_service:latest
+        docker push week8.azurecr.io/frontend:latest
 
-      # Build and push frontend image
-      - name: Build and push frontend image
-        run: |
-          docker buildx build --file frontend/Dockerfile --tag ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest --push frontend
-
-      # Run tests for Product Service
-      - name: Run tests for Product Service
-        run: |
-          docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/product_service:latest pytest --maxfail=5 --disable-warnings -q
-        continue-on-error: false
-
-      # Run tests for Order Service
-      - name: Run tests for Order Service
-        run: |
-          docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/order_service:latest pytest --maxfail=5 --disable-warnings -q
-        continue-on-error: false
-
-      # Run tests for Frontend Service
-      - name: Run tests for Frontend Service
-        run: |
-          docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest pytest --maxfail=5 --disable-warnings -q
-        continue-on-error: false
-
-      - name: Logout Azure
-        if: always()
-        run: az logout
-
-  staging-deployment:
-    needs: ci-pipeline
+  stage2-staging:
+    name: Deploy to Staging Environment
     runs-on: ubuntu-latest
-    if: success()
+    needs: stage1-build-test
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set kubectl context
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.30.0'
+        kubeconfig: ${{ secrets.STAGING_KUBECONFIG }}
+
+    - name: Create staging namespace
+      run: kubectl create ns staging || echo "Namespace exists"
+
+    - name: Deploy to staging
+      run: |
+        kubectl apply -n staging -f k8s/configmaps.yaml
+        kubectl apply -n staging -f k8s/product-db.yaml
+        kubectl apply -n staging -f k8s/order-db.yaml
+        kubectl apply -n staging -f k8s/product-service.yaml
+        kubectl apply -n staging -f k8s/order-service.yaml
+        kubectl apply -n staging -f k8s/frontend.yaml
+
+    - name: Run trivial acceptance test
+      run: |
+        curl -f http://$(kubectl get svc frontend-w08e1 -n staging -o jsonpath='{.status.loadBalancer.ingress[0].ip}')/ || exit 1
+
+    - name: Destroy staging environment
+      run: kubectl delete ns staging
+
+  stage3-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true && github.ref == 'refs/heads/main'
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v2
+    - name: Checkout Code
+      uses: actions/checkout@v3
 
-      - name: Login to Azure
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+    - name: Set kubectl context
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.30.0'
+        kubeconfig: ${{ secrets.PROD_KUBECONFIG }}
 
-      - name: Set AKS context
-        run: |
-          az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
-
-      - name: Deploy to Staging Environment
-        run: kubectl apply -f k8s/
-
-      - name: Wait for Deployments to Complete
-        run: |
-          kubectl rollout status deployment/product-service
-          kubectl rollout status deployment/order-service
-          kubectl rollout status deployment/frontend
-
-      - name: Run acceptance tests on staging
-        run: echo "Add your acceptance tests here"
-
-      - name: Cleanup staging environment
-        run: kubectl delete -f k8s/
-
-      - name: Logout Azure
-        if: always()
-        run: az logout
-
-  production-deployment:
-    needs: staging-deployment
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v2
-
-      - name: Login to Azure
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Set AKS context
-        run: |
-          az aks get-credentials --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }}
-
-      - name: Deploy to Production Environment
-        run: kubectl apply -f k8s/
-
-      - name: Logout Azure
-        if: always()
-        run: az logout
+    - name: Deploy to production
+      run: |
+        kubectl apply -f k8s/configmaps.yaml
+        kubectl apply -f k8s/product-db.yaml
+        kubectl apply -f k8s/order-db.yaml
+        kubectl apply -f k8s/product-service.yaml
+        kubectl apply -f k8s/order-service.yaml
+        kubectl apply -f k8s/frontend.yaml
