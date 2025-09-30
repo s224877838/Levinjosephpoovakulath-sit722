@@ -28,38 +28,42 @@ jobs:
       - name: Login to Azure Container Registry
         run: az acr login --name ${{ secrets.ACR_NAME }}
 
+      # Build and push product_service image
       - name: Build and push product_service image
         run: |
           docker buildx build --file backend/product_service/Dockerfile --tag ${{ secrets.ACR_NAME }}.azurecr.io/product_service:latest --push backend/product_service
 
+      # Build and push order_service image
       - name: Build and push order_service image
         run: |
           docker buildx build --file backend/order_service/Dockerfile --tag ${{ secrets.ACR_NAME }}.azurecr.io/order_service:latest --push backend/order_service
 
+      # Build and push frontend image
       - name: Build and push frontend image
         run: |
           docker buildx build --file frontend/Dockerfile --tag ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest --push frontend
 
+      # Run tests for Product Service
       - name: Run tests for Product Service
         run: |
           docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/product_service:latest pytest --maxfail=5 --disable-warnings -q
+        continue-on-error: false
 
+      # Run tests for Order Service
       - name: Run tests for Order Service
         run: |
           docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/order_service:latest pytest --maxfail=5 --disable-warnings -q
+        continue-on-error: false
 
+      # Run tests for Frontend Service
       - name: Run tests for Frontend Service
         run: |
           docker run --rm ${{ secrets.ACR_NAME }}.azurecr.io/frontend:latest pytest --maxfail=5 --disable-warnings -q
+        continue-on-error: false
 
       - name: Logout Azure
         if: always()
-        run: |
-          if az account show > /dev/null 2>&1; then
-            az logout
-          else
-            echo "No active Azure session to log out from"
-          fi
+        run: az logout
 
   staging-deployment:
     needs: ci-pipeline
@@ -84,8 +88,8 @@ jobs:
 
       - name: Wait for Deployments to Complete
         run: |
-          kubectl rollout status deployment/product-service-w08e1
-          kubectl rollout status deployment/order-service-w08e1
+          kubectl rollout status deployment/product-service
+          kubectl rollout status deployment/order-service
           kubectl rollout status deployment/frontend
 
       - name: Run acceptance tests on staging
@@ -96,12 +100,7 @@ jobs:
 
       - name: Logout Azure
         if: always()
-        run: |
-          if az account show > /dev/null 2>&1; then
-            az logout
-          else
-            echo "No active Azure session to log out from"
-          fi
+        run: az logout
 
   production-deployment:
     needs: staging-deployment
@@ -126,9 +125,4 @@ jobs:
 
       - name: Logout Azure
         if: always()
-        run: |
-          if az account show > /dev/null 2>&1; then
-            az logout
-          else
-            echo "No active Azure session to log out from"
-          fi
+        run: az logout
