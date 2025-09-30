@@ -54,7 +54,12 @@ jobs:
 
       - name: Logout Azure
         if: always()
-        run: az logout
+        run: |
+          if az account show > /dev/null 2>&1; then
+            az logout
+          else
+            echo "No active Azure session to log out from"
+          fi
 
   staging-deployment:
     needs: ci-pipeline
@@ -91,7 +96,12 @@ jobs:
 
       - name: Logout Azure
         if: always()
-        run: az logout
+        run: |
+          if az account show > /dev/null 2>&1; then
+            az logout
+          else
+            echo "No active Azure session to log out from"
+          fi
 
   production-deployment:
     needs: staging-deployment
@@ -116,4 +126,9 @@ jobs:
 
       - name: Logout Azure
         if: always()
-        run: az logout
+        run: |
+          if az account show > /dev/null 2>&1; then
+            az logout
+          else
+            echo "No active Azure session to log out from"
+          fi
