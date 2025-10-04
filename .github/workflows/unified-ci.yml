@@ -1,15 +1,14 @@
-# .github/workflows/unified-ci.yml
 name: Unified CI - Backend & Frontend
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger
   push:
     branches:
-      - testing
+      - testing         # CI triggers on push to 'testing' branch
     paths:
       - 'backend/**'
       - 'frontend/**'
-      - '.github/workflows/ci.yml'
+      - '.github/workflows/unified-ci.yml'
 
   pull_request:
     branches:
@@ -18,16 +17,17 @@ on:
     paths:
       - 'backend/**'
       - 'frontend/**'
-      - '.github/workflows/ci.yml'
+      - '.github/workflows/unified-ci.yml'
 
 env:
   ACR_LOGIN_SERVER: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
   IMAGE_TAG: ${{ github.sha }}-${{ github.run_id }}
 
 jobs:
+  # ---------------- BACKEND JOB ----------------
   backend:
     runs-on: ubuntu-latest
-    if: contains(github.event.head_commit.message, 'backend') || contains(join(github.event.commits.*.modified, ''), 'backend/')
+
     services:
       product_db:
         image: postgres:15
@@ -42,19 +42,20 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
+
       order_db:
         image: postgres:15
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: orders
-        ports:
-          - 5433:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+        ports:
+          - 5433:5432
 
     steps:
       - uses: actions/checkout@v4
@@ -120,7 +121,6 @@ jobs:
   # ---------------- FRONTEND JOB ----------------
   frontend:
     runs-on: ubuntu-latest
-    if: contains(github.event.head_commit.message, 'frontend') || contains(join(github.event.commits.*.modified, ''), 'frontend/')
 
     steps:
       - uses: actions/checkout@v4
