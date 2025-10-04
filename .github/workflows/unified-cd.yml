@@ -16,6 +16,9 @@ on:
         description: 'Azure Container Registry name'
         required: true
         default: 'week8'
+  push:
+    branches:
+      - main
 
 env:
   ACR_LOGIN_SERVER: ${{ secrets.AZURE_CONTAINER_REGISTRY }}
