@@ -31,9 +31,9 @@ jobs:
       - name: Attach ACR
         run: |
           az aks update \
-            --name ${{ github.event.inputs.aks_cluster_name }} \
-            --resource-group ${{ github.event.inputs.aks_resource_group }} \
-            --attach-acr ${{ github.event.inputs.aks_acr_name }}
+            --name ${{ secrets.STAGING_CLUSTER_NAME }} \
+            --resource-group ${{ secrets.STAGING_RG }} \
+            --attach-acr ${{ secrets.AZURE_CONTAINER_REGISTRY }}
 
       - name: Deploy Infra
         run: |
