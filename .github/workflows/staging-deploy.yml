@@ -28,13 +28,7 @@ jobs:
             --name ${{ secrets.STAGING_CLUSTER_NAME }} \
             --overwrite-existing
 
-      - name: Attach ACR
-        run: |
-          az aks update \
-            --name ${{ github.event.inputs.aks_cluster_name }} \
-            --resource-group ${{ github.event.inputs.aks_resource_group }} \
-            --attach-acr ${{ github.event.inputs.aks_acr_name }}
-
+     
       - name: Deploy Infra
         run: |
           cd k8s/
