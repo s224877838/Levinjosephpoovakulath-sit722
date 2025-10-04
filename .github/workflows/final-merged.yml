@@ -1,5 +1,5 @@
 # .github/workflows/unified-cd.yml
-name: Unified CD - Deploy Backend & Frontend to AKS
+name: Final merging to Production Environment
 
 on:
   workflow_dispatch:
