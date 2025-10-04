@@ -50,6 +50,7 @@ jobs:
       - name: Destroy Staging Environment
         run: |
           echo "Cleaning up staging..."
+          cd k8s/
           kubectl delete -f frontend.yaml
           kubectl delete -f order-service.yaml
           kubectl delete -f product-service.yaml
