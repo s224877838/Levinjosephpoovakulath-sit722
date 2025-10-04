@@ -1,4 +1,4 @@
-name: Unified CI- Backend & Frontend
+name: Unified CI - Backend & Frontend
 
 on:
   workflow_dispatch:  # Manual trigger
