@@ -39,11 +39,12 @@ jobs:
 
       - name: Deploy Backend & Frontend
         run: |
+          cd k8s/
           kubectl apply -f product-service.yaml
           kubectl apply -f order-service.yaml
           kubectl apply -f frontend.yaml
 
-      - name: (Optional) Run Acceptance Tests
+      - name: Run Acceptance Tests
         run: echo "Add curl or pytest here to hit endpoints"
 
       - name: Destroy Staging Environment
