@@ -39,6 +39,7 @@ jobs:
 
       - name: Deploy Backend & Frontend
         run: |
+          cd k8s/
           kubectl apply -f product-service.yaml
           kubectl apply -f order-service.yaml
           kubectl apply -f frontend.yaml
